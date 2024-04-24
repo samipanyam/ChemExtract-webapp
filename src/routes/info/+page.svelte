@@ -35,9 +35,6 @@
         <a href="/">ChemExtract</a>
     </div>
     <ul class="nav-links">
-        <div class="menu">
-            <a href='/Download'>Download</a>
-        </div>
     </ul>
   </nav>
   

@@ -14,6 +14,7 @@ from collections import defaultdict
 from  huggingface_hub import hf_hub_download
 import json
 from more_itertools import unique_everseen
+import time
 
 
 
@@ -106,7 +107,9 @@ class StructureExtractor:
                     self.PDFtoPNG()
 
                 for index, img in enumerate(self.pngs):
+                    start = time.time()
                     minisegments = segment_chemical_structures(img, expand=False)
+                    print(f"making segments took {time.time() - start} seconds")
                     _, bounding_boxes, _ = get_mrcnn_results(img)
                     averages = [str(row[0]) for row in bounding_boxes] + [str(row[1]) for row in bounding_boxes]
                     Widths = [str(row[2]-row[0]) for row in bounding_boxes]
@@ -148,11 +151,14 @@ class StructureExtractor:
                 
                     return json.load(open(smiles_txt_path, 'r'))
                 
+                
                 if not self.segments:
+                    start = time.time()
                     self.segment()
+                    print(f"Segmentation took {time.time() - start} seconds")
 
                 
-
+                start = time.time()
                 for i, img in enumerate(self.segments):
                     SMILES = self.model.predict_image(img[0], return_atoms_bonds=True, return_confidence=True)['smiles']
                 
@@ -162,9 +168,7 @@ class StructureExtractor:
                         keyword = chemical.iupac_name
                     except pcp.BadRequestError:
                         cid = None
-                    
-                    
-                    
+                          
                     to_add = {
                         'SMILES': SMILES,
                         'page': img[1],
@@ -180,6 +184,8 @@ class StructureExtractor:
                     output.append(to_add)
 
                 self.smiles = output
+                end = time.time()
+                print(f"SMILES extraction took {end - start} seconds")
                 with open(smiles_txt_path, 'w') as f:
                     json.dump(self.smiles, f)
                 
@@ -228,6 +234,7 @@ class TextExtractor:
 
     async def process_page(self, page_text):
         
+        start = time.time()
         # Asynchronously process a single page's keywords
         all_keywords_with_page_number_and_index = defaultdict(list)
         split_page = split_text(page_text, 800)
@@ -257,9 +264,8 @@ class TextExtractor:
                     
                     if len(partial_word) > 2 and partial_word.isnumeric() == False:
                        
-                        matches = [word for word in words if partial_word in word]   
-                        for match in matches:
-                            new_keywords.append(match)
+                       matches = filter(lambda word: partial_word in word, words)
+                       new_keywords.extend(list(matches))
                 else:
                     new_keywords.append(token)
 
@@ -301,7 +307,8 @@ class TextExtractor:
                     "index": entry[2]
                 })
                 seen_keywords.add(entry[0])
-
+        end = time.time()
+        print(f"Page processing took {end - start} seconds")
         return unique_keywords
 
 
@@ -309,6 +316,7 @@ class TextExtractor:
 
 
     async def getKeywords(self):
+        start = time.time()
         if self.keywords is None:
             text = self.extract()
             delimiter = ' '
@@ -320,10 +328,13 @@ class TextExtractor:
 
             # Combine keywords from all pages
             self.keywords = [keyword for page_keywords in all_keywords for keyword in page_keywords]
-       
+        
+        end = time.time()
+        print(f"Keyword extraction took {end - start} seconds")
         return self.keywords
 
     async def toSMILES(self) -> list:
+        start = time.time()
         if self.pathtosave:
             folder_path = self.pathtosave + '/' + 'SMILES'
         else:
@@ -344,38 +355,38 @@ class TextExtractor:
         
             
 
-        async def fetch_compound_smiles(keyword):
+        async def fetch_compound(keyword):
+            start = time.time()
             try:
                 compound = pcp.get_compounds(keyword["keyword"], 'name')[0]
-                return compound.canonical_smiles
+                end = time.time()
+                print(f"Fetching compound smiles for {keyword['keyword']} took {end - start} seconds")
+                return compound
             except pcp.PubChemHTTPError as e:
                 if hasattr(e, 'args') and len(e.args) > 0:
                     error_name = e.args[0]
                     if error_name == 'PUGREST.ServerBusy':
                         print(f"Rate limit exceeded. Retrying after {e.headers['Retry-After']} seconds...")
-                        retry_after = int(e.headers['Retry-After'])
+                        retry_after = 2
                         await asyncio.sleep(retry_after)
-                        return await fetch_compound_smiles(keyword)
+                        return await fetch_compound(keyword)
             except (IndexError, KeyError):
                 return None
             except Exception as e:
                 print(f"Error fetching compound smiles: {e}")
                 return None
 
-        tasks = [fetch_compound_smiles(keyword) for keyword in self.keywords]
-        filtered_SMILES= await asyncio.gather(*tasks)
-
-        
+        tasks = [fetch_compound(keyword) for keyword in self.keywords]
+        start = time.time()
+        filtered_compounds= await asyncio.gather(*tasks)
+        end = time.time()
+        print(f"Fetching compound smiles took {end - start} seconds")
+        filtered_SMILES = [compound.canonical_smiles if compound is not None else None for compound in filtered_compounds]
 
         tor = []
-        for SMILES in filtered_SMILES:
-            try:
-                cid = pcp.get_compounds(SMILES, 'smiles')[0].cid
-            except ValueError:
-                cid = None
-            except pcp.BadRequestError:
-                cid = None
-          
+        for compound in filtered_compounds:
+            SMILES =  compound.canonical_smiles if compound is not None else None
+            cid = compound.cid if compound is not None else None
             tor.append({
                 "keyword": self.keywords[filtered_SMILES.index(SMILES)]["keyword"],
                 "SMILES": SMILES,
@@ -388,6 +399,9 @@ class TextExtractor:
 
         with open(f'{folder_path}/{subfolder}/{os.path.basename(self.filename_without_extension)}.json', 'w') as f:
             json.dump(filtered_keywords, f)
+
+        end = time.time()
+        print(f"SMILES extraction took {end - start} seconds")
         return filtered_keywords
 
 

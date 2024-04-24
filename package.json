@@ -21,6 +21,7 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"request": "^2.88.2",
 		"svelte-spa-router": "^4.0.1"
 	}
 }
