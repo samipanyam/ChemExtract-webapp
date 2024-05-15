@@ -1,7 +1,7 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount} from 'svelte';
   import {getSmilesData, sendData} from '../../util'
-
+  
   let names = [];
 
   let file_paths = [];
@@ -42,7 +42,7 @@
 <div class="list-wrapper">
   {#each names as name, i}
     <button class="list-item" on:click={sendData(name)}>
-      <img class="list-item-image" src={'src/'+name.image } alt="{name.keyword}" onerror="this.style.display='none';">
+      <img class="list-item-image" src={'https://chemextract.s3.amazonaws.com/'+name.image } alt="{name.keyword}" onerror="this.style.display='none';">
       {#if name.keyword}
         <p class="list-item-text">{name.keyword}</p>
       {/if}

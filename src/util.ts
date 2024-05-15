@@ -7,6 +7,7 @@ export let data = [];
 
 
 
+
 export async function PDFprocessor(files: FileList) {
   if (files.length > 0) {
     var  LoadingSign= document.getElementsByClassName("center")[0];
@@ -112,3 +113,4 @@ export async function sendData(chemical_info: ChemicalInfo) {
   goto('/info')
   
 }
+

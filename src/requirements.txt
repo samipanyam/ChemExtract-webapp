@@ -235,8 +235,8 @@ tensorflow==2.10.1
 tensorflow-estimator==2.10.0
 tensorflow-io-gcs-filesystem==0.32.0
 tensorrt==8.6.1
-tensorrt-bindings==8.6.1
-tensorrt-libs==8.6.1
+tensorrt-bindings
+tensorrt-libs
 termcolor==2.4.0
 threadpoolctl==3.1.0
 tifffile==2023.7.4

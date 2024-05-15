@@ -15,9 +15,39 @@ from  huggingface_hub import hf_hub_download
 import json
 from more_itertools import unique_everseen
 import time
+import shutil
+import boto3
 
 
 
+def delete_s3_folder(bucket_name, folder_prefix):
+    try:
+        s3 = boto3.client('s3')
+        objects_to_delete = []
+
+        # List objects in the specified folder
+        paginator = s3.get_paginator('list_objects_v2')
+        for result in paginator.paginate(Bucket=bucket_name, Prefix=folder_prefix):
+            if 'Contents' in result:
+                for obj in result['Contents']:
+                    objects_to_delete.append({'Key': obj['Key']})
+
+        # Delete objects
+        if objects_to_delete:
+            s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects_to_delete})
+    except Exception as e:
+        print(f"Error deleting S3 folder: {e}")
+
+
+
+def upload_folder_to_s3(local_folder_path, bucket_name, s3_folder_path=''):
+    s3 = boto3.client('s3')
+
+    for root, dirs, files in os.walk(local_folder_path):
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            s3_file_path = os.path.join(s3_folder_path, os.path.relpath(local_file_path, local_folder_path))
+            s3.upload_file(local_file_path, bucket_name,local_folder_path +"/"+s3_file_path)
 async def fetch_from_pcp(keyword, type, output):
     try:
         compound = pcp.get_compounds(keyword, type)[0]
@@ -68,7 +98,7 @@ class StructureExtractor:
         self.filename_without_extension = os.path.splitext(self.filename)[0]
         self.pathtosave = pathtosave
         ckpt_path =  hf_hub_download('yujieq/MolScribe', 'swin_base_char_aux_1m.pth')
-        self.model = MolScribe(ckpt_path, device=torch.device('cpu'))
+        self.model = MolScribe(ckpt_path)
         self.pngs = []
         self.segments = []
         self.smiles = []
@@ -92,7 +122,7 @@ class StructureExtractor:
 
         return self.pngs
 
-    def segment(self):
+    async def segment(self):
         try:
             if not self.segments:
                 if self.pathtosave:
@@ -118,9 +148,14 @@ class StructureExtractor:
                 
                     minis = []
                     for idx, minisegment in enumerate(minisegments):
+                        minisegment_array = np.array(minisegment)
+                        minisegment = minisegment_array[:, :, :3]
+                    
                         minisegment = [minisegment, idx, grouped_averages[idx], Widths[idx], Heights[idx], os.path.basename(self.filename_without_extension)]
                         minis.append(minisegment)
+                        
                         cv2.imwrite(f'{folder_path}/{os.path.basename(self.filename_without_extension)}_{idx}.png', minisegment[0])
+
 
                     self.segments.extend(minis)
 
@@ -129,8 +164,7 @@ class StructureExtractor:
             print(e)
             return None
 
-    def toSMILES(self):
-        try:
+    async def toSMILES(self):
             if not self.smiles:
                 output = []
                 if self.pathtosave:
@@ -154,20 +188,23 @@ class StructureExtractor:
                 
                 if not self.segments:
                     start = time.time()
-                    self.segment()
+                    await self.segment()
                     print(f"Segmentation took {time.time() - start} seconds")
 
                 
                 start = time.time()
                 for i, img in enumerate(self.segments):
-                    SMILES = self.model.predict_image(img[0], return_atoms_bonds=True, return_confidence=True)['smiles']
-                
+                    
+                    SMILES = self.model.predict_image(img[0])['smiles']
+                    
                     try:
                         chemical = pcp.get_compounds(SMILES, 'smiles')[0]
                         cid = chemical.cid
                         keyword = chemical.iupac_name
+                        
                     except pcp.BadRequestError:
                         cid = None
+                        keyword = None
                           
                     to_add = {
                         'SMILES': SMILES,
@@ -182,7 +219,7 @@ class StructureExtractor:
                         'image': f'segments/{os.path.basename(self.filename_without_extension)}_{i}.png'
                     }
                     output.append(to_add)
-
+                    
                 self.smiles = output
                 end = time.time()
                 print(f"SMILES extraction took {end - start} seconds")
@@ -191,9 +228,9 @@ class StructureExtractor:
                 
 
             return self.smiles
-        except Exception as e:
-            print(e)
-            return None
+        # except Exception as e:
+        #     print(e)
+        #     return None
 
 
 class TextExtractor:
@@ -222,6 +259,7 @@ class TextExtractor:
             return occurrences
         except Exception as e:
             print(e)
+        
 
 
     def extract(self) -> list:
@@ -407,11 +445,16 @@ class TextExtractor:
 
 class BatchExtractor:
     SMILES = None
+    pdf_list = []
+    text_list = []
+    pathtosave = None
     def __init__(self, path: str, pathtosave: str = None):
-        try: 
+            
+            print(os.path.isdir(path))
             if os.path.isdir(path):
                 self.pdf_list = []
                 self.text_list =[]
+            
                 self.pathtosave = pathtosave
 
                 files = os.listdir(path)
@@ -420,18 +463,12 @@ class BatchExtractor:
                         print(f'{path}/{filename}')
                         self.pdf_list.append(StructureExtractor(f'{path}/{filename}', pathtosave))
                         self.text_list.append(TextExtractor(f'{path}/{filename}', pathtosave))
-                
-            
-
             elif os.path.isfile(path):
                 if path.endswith(".pdf"):
                     self.pdf_list = [StructureExtractor(path, pathtosave)]
                     self.text_list = [TextExtractor(path, pathtosave)]
-        except Exception as e:
-            print(e)
-            return None
            
-
+            print("hi")
 
     async def toSMILES(self):
         try:
@@ -440,7 +477,7 @@ class BatchExtractor:
             tor["Text_SMILES"] = []
 
             for extractor in self.pdf_list:
-                pdf_smiles = extractor.toSMILES()
+                pdf_smiles = await extractor.toSMILES()
                 tor["PDF_SMILES"].append(pdf_smiles)  # Await the asynchronous call
 
             for extractor in self.text_list:
@@ -462,9 +499,10 @@ class BatchExtractor:
             
             folder_path = 'SMILES'
             subfolder = 'COMBINED_SMILES'
+            print("hi")
             if not os.path.exists(f'{folder_path}/{subfolder}'):
                 os.makedirs(f'{self.pathtosave}/{folder_path}/{subfolder}')
-
+            print("hi")
             if os.path.exists(f'{self.pathtosave}/{folder_path}/{subfolder}/OUTPUT.json'):
                 return json.loads(open(f'{self.pathtosave}/{folder_path}/{subfolder}/OUTPUT.json', 'r').read())
 
@@ -611,7 +649,7 @@ def highlightPDFImage(userfolder, X,Y,Height,Width,page):
             
                         
 
-                        
+
 
 
 

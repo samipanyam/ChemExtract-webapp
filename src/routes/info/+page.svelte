@@ -13,7 +13,7 @@
      
         console.log(names["origin"].split("/")[0]);
         console.log(names["origin"].split("/")[1]);
-         bob  = "/src/" + names["origin"].split("/")[0]  +"/highlighted_" +names["origin"].split("/")[1] + ".pdf" 
+         bob  = "https://chemextract.s3.amazonaws.com/" + names["origin"].split("/")[0]  +"/highlighted_" +names["origin"].split("/")[1] + ".pdf" 
         console.log(bob);
       // Set dataLoaded to true to indicate that data fetching is completed
       dataLoaded = true;
@@ -43,7 +43,7 @@
           <!-- Your main content -->
           <div class="wrapper1">
               <div class="chemical-image">
-                  <img src="src/{names["Image"]}" alt="logo" class="img">
+                  <img src="https://chemextract.s3.amazonaws.com/{names["Image"]}" alt="logo" class="img">
               </div>
           </div>
           <div class="wrapper2">
@@ -59,7 +59,7 @@
       <div class="container2">
         <!-- Your container2 content -->
         <div class="chemical-pdf">
-          <iframe src={bob} title="PDF Viewer" width="100%" height="100%" frameborder="0"></iframe>
+          <iframe src={bob} title="PDF Viewer" width="100%" height="100%" frameborder="0" ></iframe>
         </div>
         
       </div>

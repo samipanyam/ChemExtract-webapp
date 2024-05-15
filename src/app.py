@@ -1,12 +1,13 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from pdfextract import BatchExtractor, highlightPDF, highlightPDFImage
+from pdfextract import BatchExtractor, highlightPDF, highlightPDFImage, upload_folder_to_s3
 import asyncio
 import os
 import shutil
 import uuid
 import pubchempy as pcp
 import json
+import boto3
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -16,7 +17,12 @@ def extract_data():
     try:
         # Generate a unique folder name for each user
         global user_folder
+        global bucket_name
+
+
         user_folder = 'temp_files_' + str(uuid.uuid4())
+        bucket_name = 'chemextract'
+        
 
         files = request.files.getlist('files')
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -40,7 +46,10 @@ def extract_data():
         # Save the SMILES data to a file
         with open(os.path.join(user_folder, 'smiles_data.json'), 'w') as json_file:
             json.dump(smiles_data, json_file)
+        
+        # Upload the user's folder to S3
 
+        upload_folder_to_s3(user_folder, bucket_name)
         return jsonify({
             'message': 'Success',
             'data': smiles_data,
@@ -61,7 +70,8 @@ def get_smiles_data():
          # Adjust this according to your authentication/session mechanism
         with open(os.path.join(user_folder, 'smiles_data.json'), 'r') as json_file:
             smiles_data = json.load(json_file)
-        
+        upload_folder_to_s3(user_folder, bucket_name)
+
         return jsonify(smiles_data), 200
     
     except FileNotFoundError:
@@ -126,6 +136,9 @@ def get_pubchempy_data():
     with open(filename, 'w') as json_file:
         json.dump(properties, json_file)
     print(properties)
+
+    
+    upload_folder_to_s3(user_folder, bucket_name)
     return jsonify(properties), 200
 
 
@@ -136,6 +149,7 @@ def load_pubchempy_data():
         with open(filename, 'r') as json_file:
             data = json.load(json_file)
 
+        upload_folder_to_s3(user_folder, bucket_name)
         return jsonify(data), 200
     except FileNotFoundError:
         return jsonify({'error': 'PubChemPy data not found'}), 404
