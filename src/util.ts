@@ -55,7 +55,7 @@ export async function postPDFs(files: FileList) {
 
 
   try {
-    const response = await fetch('http://chemextract.eastus.azurecontainer.io/extract', {
+    const response = await fetch('https://chemextract.azurewebsites.net/extract', {
      
 
       method: 'POST',
@@ -73,7 +73,7 @@ export async function postPDFs(files: FileList) {
 }
 
 export async function getSmilesData() {
-  const response = await fetch('http://chemextract.eastus.azurecontainer.io/load_smiles_data' , {
+  const response = await fetch('https://chemextract.azurewebsites.net/load_smiles_data' , {
     method: 'GET',
     credentials: 'include',
   });
@@ -84,7 +84,7 @@ export async function getSmilesData() {
 }
 
 export async function getPubchemData() {
-  const response = await fetch('http://chemextract.eastus.azurecontainer.io/load_pubchempy_data' , {
+  const response = await fetch('https://chemextract.azurewebsites.net/load_pubchempy_data' , {
 
     method: 'GET',
     credentials: 'include',
@@ -100,7 +100,7 @@ interface ChemicalInfo {
 
 export async function sendData(chemical_info: ChemicalInfo) {
   // Function logic here
-  const response = await fetch('http://chemextract.eastus.azurecontainer.io/get_pubchempy_data', {
+  const response = await fetch('https://chemextract.azurewebsites.net/get_pubchempy_data', {
 
     method: 'POST',
     credentials: 'include',
